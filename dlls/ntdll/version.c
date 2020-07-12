@@ -590,6 +590,7 @@ BOOLEAN WINAPI RtlGetProductInfo(DWORD dwOSMajorVersion, DWORD dwOSMinorVersion,
  */
 NTSTATUS WINAPI RtlGetVersion( RTL_OSVERSIONINFOEXW *info )
 {
+    ERR("(%p)\n", info);
     info->dwMajorVersion = current_version->dwMajorVersion;
     info->dwMinorVersion = current_version->dwMinorVersion;
     info->dwBuildNumber  = current_version->dwBuildNumber;

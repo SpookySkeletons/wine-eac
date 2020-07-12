@@ -63,7 +63,7 @@ struct reply_header
 /* this is used to construct the generic_request union */
 struct request_max_size
 {
-    int pad[16]; /* the max request size is 16 ints */
+    int pad[18]; /* the max request size is 16 ints */
 };
 
 #define FIRST_USER_HANDLE 0x0020  /* first possible value for low word of user handle */
@@ -497,7 +497,9 @@ enum apc_type
     APC_MAP_VIEW,
     APC_UNMAP_VIEW,
     APC_CREATE_THREAD,
-    APC_BREAK_PROCESS
+    APC_BREAK_PROCESS,
+    APC_REAL_USER,
+    APC_REAL_KERNEL,
 };
 
 typedef union
@@ -601,6 +603,11 @@ typedef union
         mem_size_t       reserve;   /* reserve size for thread stack */
         mem_size_t       commit;    /* commit size for thread stack */
     } create_thread;
+    struct
+    {
+        enum apc_type    type;      /* APC_REAL_KERNEL && APC_REAL_USER */
+        int special_apc;
+    } real_apc;
 } apc_call_t;
 
 typedef union
@@ -750,6 +757,8 @@ typedef union
     {
         enum irp_type    type;      /* IRP_CALL_IOCTL */
         ioctl_code_t     code;      /* ioctl code */
+        client_ptr_t     in_buf;
+        client_ptr_t     out_buf;
         data_size_t      out_size;  /* needed output size */
         int              __pad;
         client_ptr_t     file;      /* opaque ptr for the file object */
@@ -849,6 +858,27 @@ struct rawinput_device
 @END
 
 
+@REQ(wait_proc_init)
+    obj_handle_t process;
+@REPLY
+    unsigned int process_state;
+    obj_handle_t init_event;
+@END
+
+#define PROCESS_STARTING 0x0
+#define PROCESS_RUNNING  0x1
+
+@REQ(wait_thread_init)
+    obj_handle_t thread;
+@REPLY
+    unsigned int thread_state;
+    obj_handle_t init_event;
+@END
+
+#define THREAD_STARTING 0x0
+#define THREAD_RUNNING  0x1
+
+
 /* Create a new thread */
 @REQ(new_thread)
     obj_handle_t process;      /* process in which to create thread */
@@ -879,6 +909,7 @@ struct rawinput_device
     client_ptr_t entry;        /* process entry point */
 @REPLY
     int          suspend;      /* is process suspended? */
+    obj_handle_t processed_event;
 @END
 
 
@@ -900,6 +931,7 @@ struct rawinput_device
     int          version;      /* protocol version */
     unsigned int all_cpus;     /* bitset of supported CPUs */
     int          suspend;      /* is thread suspended? */
+    obj_handle_t processed_event;
 @END
 
 
@@ -1017,6 +1049,7 @@ struct rawinput_device
     mod_handle_t base_address; /* base address of module */
 @REPLY
     client_ptr_t entry_point;
+    mod_handle_t base_address;
     data_size_t  filename_len;    /* buffer len in bytes required to store filename */
     VARARG(filename,unicode_str); /* file name of module */
 @END
@@ -1045,6 +1078,8 @@ struct rawinput_device
     client_ptr_t name;         /* ptr to ptr to name (in process addr space) */
     data_size_t  dbg_size;     /* debug info size */
     VARARG(filename,unicode_str); /* file name of dll */
+@REPLY
+    obj_handle_t processed_event; /* signals when "kernel" callbacks are done with it */
 @END
 
 
@@ -1063,12 +1098,29 @@ struct rawinput_device
     int          self;         /* run APC in caller itself? */
 @END
 
+@REQ(finalize_apc)
+    obj_handle_t handle;       /* handle to the apc */
+    apc_call_t   call;         /* real call */
+@END
+
 
 /* Get the result of an APC call */
 @REQ(get_apc_result)
     obj_handle_t handle;       /* handle to the APC */
 @REPLY
     apc_result_t result;       /* result of the APC */
+@END
+
+#define KERNEL_HANDLE_FLAG 0x8000000
+
+/* Open any object */
+@REQ(open_handle)
+    unsigned int   access;        /* access flags */
+    unsigned int   attributes;    /* object attributes */
+    obj_handle_t   rootdir;       /* root directory */
+    VARARG(object_name,unicode_str); /* Object name */
+@REPLY
+    obj_handle_t   handle;        /* handle to the directory */
 @END
 
 
@@ -2545,6 +2597,8 @@ enum message_type
 @REQ(ioctl)
     ioctl_code_t   code;          /* ioctl code */
     async_data_t   async;         /* async I/O parameters */
+    client_ptr_t   input_buffer;  /* user space address of input buffer */
+    client_ptr_t   output_buffer; /* user space address of output buffer */
     VARARG(in_data,bytes);        /* ioctl input data */
 @REPLY
     obj_handle_t   wait;          /* handle to wait on for blocking ioctl */
@@ -3575,6 +3629,7 @@ struct handle_info
     obj_handle_t handle;
     unsigned int access;
     unsigned int type;
+    client_ptr_t object;
 };
 
 /* Return a list of all opened handles */
@@ -3797,10 +3852,89 @@ struct handle_info
     obj_handle_t manager;         /* handle to the device manager */
     client_ptr_t user_ptr;        /* kernel object pointer */
     unsigned int access;          /* wanted access rights */
+    unsigned int attributes;
 @REPLY
     obj_handle_t handle;          /* kernel object handle */
 @END
 
+
+@REQ(callback_subscribe)
+    obj_handle_t manager;
+    int callback_mask;
+@END
+
+enum registry_event_type
+{
+    placeholder
+};
+
+enum operation_type { CREATE_PROC, DUP_PROC, CREATE_THRD, DUP_THRD };
+
+typedef union
+{
+    int cb_type;
+    struct
+    {
+        int cb_type;
+        int create;   /* creation or destruction */
+        process_id_t pid;
+        process_id_t ppid;
+    } process_life;
+    struct
+    {
+        int cb_type;
+        int create;   /* creation or destruction */
+        process_id_t pid;
+        thread_id_t tid;
+    } thread_life;
+    struct
+    {
+        int cb_type;
+        process_id_t pid;
+        client_ptr_t base;
+        mem_size_t size;
+    } image_life;
+    struct
+    {
+        int cb_type;
+        enum registry_event_type event_type;
+    } registry_event;
+    struct
+    {
+        int cb_type;
+        enum operation_type op_type;
+        unsigned int access;
+        unsigned int status;
+        process_id_t source_pid;
+        process_id_t target_pid;
+        obj_handle_t object;
+        unsigned int padding;
+    } handle_event;
+} krnl_cbdata_t;
+
+enum kernel_callback_type
+{
+    SERVER_CALLBACK_PROC_LIFE = 0x1,
+    SERVER_CALLBACK_THRD_LIFE = 0x2,
+    SERVER_CALLBACK_IMAGE_LIFE = 0x4,
+    SERVER_CALLBACK_REGISTRY_EVENT = 0x8,
+    SERVER_CALLBACK_HANDLE_EVENT = 0x10
+};
+
+@REQ(get_next_callback_event)
+    obj_handle_t manager;
+@REPLY
+    krnl_cbdata_t cb_data;
+    thread_id_t   client_tid;
+    client_ptr_t  client_thread;
+    VARARG(string_paramenter,unicode_str); /* type defined meaning */
+@END
+
+@REQ(attach_process)
+    obj_handle_t manager;
+    client_ptr_t process;
+    int detach;
+@END
 
 /* Make the current process a system process */
 @REQ(make_process_system)

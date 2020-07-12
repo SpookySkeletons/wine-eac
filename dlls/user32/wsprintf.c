@@ -451,7 +451,7 @@ static INT wvsnprintfA( LPSTR buffer, UINT maxlen, LPCSTR spec, __ms_va_list arg
         maxlen -= len;
     }
     *p = 0;
-    TRACE("%s\n",debugstr_a(buffer));
+    //TRACE("%s\n",debugstr_a(buffer));
     return (maxlen > 1) ? (INT)(p - buffer) : -1;
 }
 
@@ -579,7 +579,10 @@ static INT wvsnprintfW( LPWSTR buffer, UINT maxlen, LPCWSTR spec, __ms_va_list a
  */
 INT WINAPI wvsprintfA( LPSTR buffer, LPCSTR spec, __ms_va_list args )
 {
-    INT res = wvsnprintfA( buffer, 1024, spec, args );
+    INT res;
+    //static volatile BOOL forever_true = TRUE;
+    //while (forever_true) asm("");
+    res = wvsnprintfA( buffer, 1024, spec, args );
     return ( res == -1 ) ? 1024 : res;
 }
 

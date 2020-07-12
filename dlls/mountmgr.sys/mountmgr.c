@@ -88,7 +88,9 @@ static struct mount_point *add_mount_point( DEVICE_OBJECT *device, UNICODE_STRIN
     strcpyW( str, link );
     RtlInitUnicodeString( &mount->link, str );
     str += strlenW(str) + 1;
-    memcpy( str, device_name->Buffer, device_name->Length );
+    PVOID src = device_name->Buffer;
+    memcpy( str, src, device_name->Length );
+    USHORT length = device_name->Length;
     str[device_name->Length / sizeof(WCHAR)] = 0;
     mount->name.Buffer = str;
     mount->name.Length = device_name->Length;

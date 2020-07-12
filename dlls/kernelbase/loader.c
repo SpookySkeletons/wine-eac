@@ -62,6 +62,8 @@ FARPROC WINAPI get_proc_address( HMODULE module, LPCSTR function )
     FARPROC proc;
     ANSI_STRING str;
 
+    ERR("%s\n", debugstr_a(function));
+
     if (!module) module = NtCurrentTeb()->Peb->ImageBaseAddress;
 
     if ((ULONG_PTR)function >> 16)

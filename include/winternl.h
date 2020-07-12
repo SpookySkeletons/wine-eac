@@ -972,6 +972,8 @@ typedef enum _SYSTEM_INFORMATION_CLASS {
     SystemSuperfetchInformation = 79,
     SystemMemoryListInformation = 80,
     SystemFileCacheInformationEx = 81,
+    SystemBootEnvironmentInformation = 90,
+    SystemCodeIntegrityInformation = 103,
     SystemLogicalProcessorInformationEx = 107,
     SystemInformationClassMax
 } SYSTEM_INFORMATION_CLASS, *PSYSTEM_INFORMATION_CLASS;
@@ -1679,6 +1681,31 @@ typedef struct _SYSTEM_FIRMWARE_TABLE_INFORMATION
     UCHAR TableBuffer[1];
 } SYSTEM_FIRMWARE_TABLE_INFORMATION, *PSYSTEM_FIRMWARE_TABLE_INFORMATION;
 
+typedef enum _FIRMWARE_TYPE
+{
+    FirmwareTypeUnknown,
+    FirmwareTypeBios,
+    FirmwareTypeUefi,
+    FirmwareTypeMax,
+} FIRMWARE_TYPE, *PFIRMWARE_TYPE;
+
+/* System Information Class 0x5A */
+
+typedef struct _SYSTEM_BOOT_ENVIRONMENT_INFORMATION
+{
+    GUID BootIdentifier;
+    FIRMWARE_TYPE FirmwareType;
+    ULONGLONG BootFlags;
+} SYSTEM_BOOT_ENVIRONMENT_INFORMATION, *PSYSTEM_BOOT_ENVIRONMENT_INFORMATION;
+
+/* System Information Class 0x67 */
+
+typedef struct _SYSTEM_CODEINTEGRITY_INFORMATION
+{
+    ULONG Length;
+    ULONG CodeIntegrityOptions;
+} SYSTEM_CODEINTEGRITY_INFORMATION, *PSYSTEM_CODEINTEGRITY_INFORMATION;
+
 typedef struct _TIME_FIELDS
 {   CSHORT Year;
     CSHORT Month;
@@ -1915,6 +1942,9 @@ typedef struct _RTL_HANDLE_TABLE
 #define OBJ_OPENLINK         0x00000100
 #define OBJ_KERNEL_HANDLE    0x00000200
 #define OBJ_VALID_ATTRIBUTES 0x000003F2
+
+/* wine extension */
+#define OBJ_FROM_KERNEL      0x80000000
 
 #define SERVERNAME_CURRENT ((HANDLE)NULL)
 

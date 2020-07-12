@@ -47,7 +47,7 @@ struct reply_header
 
 struct request_max_size
 {
-    int pad[16];
+    int pad[18];
 };
 
 #define FIRST_USER_HANDLE 0x0020
@@ -481,7 +481,9 @@ enum apc_type
     APC_MAP_VIEW,
     APC_UNMAP_VIEW,
     APC_CREATE_THREAD,
-    APC_BREAK_PROCESS
+    APC_BREAK_PROCESS,
+    APC_REAL_USER,
+    APC_REAL_KERNEL,
 };
 
 typedef union
@@ -585,6 +587,11 @@ typedef union
         mem_size_t       reserve;
         mem_size_t       commit;
     } create_thread;
+    struct
+    {
+        enum apc_type    type;
+        int special_apc;
+    } real_apc;
 } apc_call_t;
 
 typedef union
@@ -734,6 +741,8 @@ typedef union
     {
         enum irp_type    type;
         ioctl_code_t     code;
+        client_ptr_t     in_buf;
+        client_ptr_t     out_buf;
         data_size_t      out_size;
         int              __pad;
         client_ptr_t     file;
@@ -851,6 +860,37 @@ struct get_new_process_info_reply
 };
 
 
+struct wait_proc_init_request
+{
+    struct request_header __header;
+    obj_handle_t process;
+};
+struct wait_proc_init_reply
+{
+    struct reply_header __header;
+    unsigned int process_state;
+    obj_handle_t init_event;
+};
+
+#define PROCESS_STARTING 0x0
+#define PROCESS_RUNNING  0x1
+
+struct wait_thread_init_request
+{
+    struct request_header __header;
+    obj_handle_t thread;
+};
+struct wait_thread_init_reply
+{
+    struct reply_header __header;
+    unsigned int thread_state;
+    obj_handle_t init_event;
+};
+
+#define THREAD_STARTING 0x0
+#define THREAD_RUNNING  0x1
+
+
 
 struct new_thread_request
 {
@@ -899,7 +939,7 @@ struct init_process_done_reply
 {
     struct reply_header __header;
     int          suspend;
-    char __pad_12[4];
+    obj_handle_t processed_event;
 };
 
 
@@ -927,6 +967,8 @@ struct init_thread_reply
     int          version;
     unsigned int all_cpus;
     int          suspend;
+    obj_handle_t processed_event;
+    char __pad_44[4];
 };
 
 
@@ -1097,9 +1139,10 @@ struct get_dll_info_reply
 {
     struct reply_header __header;
     client_ptr_t entry_point;
+    mod_handle_t base_address;
     data_size_t  filename_len;
     /* VARARG(filename,unicode_str); */
-    char __pad_20[4];
+    char __pad_28[4];
 };
 
 
@@ -1145,6 +1188,8 @@ struct load_dll_request
 struct load_dll_reply
 {
     struct reply_header __header;
+    obj_handle_t processed_event;
+    char __pad_12[4];
 };
 
 
@@ -1175,6 +1220,17 @@ struct queue_apc_reply
     int          self;
 };
 
+struct finalize_apc_request
+{
+    struct request_header __header;
+    obj_handle_t handle;
+    apc_call_t   call;
+};
+struct finalize_apc_reply
+{
+    struct reply_header __header;
+};
+
 
 
 struct get_apc_result_request
@@ -1186,6 +1242,24 @@ struct get_apc_result_reply
 {
     struct reply_header __header;
     apc_result_t result;
+};
+
+#define KERNEL_HANDLE_FLAG 0x8000000
+
+
+struct open_handle_request
+{
+    struct request_header __header;
+    unsigned int   access;
+    unsigned int   attributes;
+    obj_handle_t   rootdir;
+    /* VARARG(object_name,unicode_str); */
+};
+struct open_handle_reply
+{
+    struct reply_header __header;
+    obj_handle_t   handle;
+    char __pad_12[4];
 };
 
 
@@ -3513,6 +3587,8 @@ struct ioctl_request
     struct request_header __header;
     ioctl_code_t   code;
     async_data_t   async;
+    client_ptr_t   input_buffer;
+    client_ptr_t   output_buffer;
     /* VARARG(in_data,bytes); */
 };
 struct ioctl_reply
@@ -5123,6 +5199,7 @@ struct handle_info
     obj_handle_t handle;
     unsigned int access;
     unsigned int type;
+    client_ptr_t object;
 };
 
 
@@ -5423,7 +5500,7 @@ struct get_next_device_request_reply
     client_ptr_t client_thread;
     data_size_t  in_size;
     /* VARARG(next_data,bytes); */
-    char __pad_60[4];
+    char __pad_68[4];
 };
 
 
@@ -5490,7 +5567,7 @@ struct get_kernel_object_handle_request
     obj_handle_t manager;
     client_ptr_t user_ptr;
     unsigned int access;
-    char __pad_28[4];
+    unsigned int attributes;
 };
 struct get_kernel_object_handle_reply
 {
@@ -5499,6 +5576,104 @@ struct get_kernel_object_handle_reply
     char __pad_12[4];
 };
 
+
+struct callback_subscribe_request
+{
+    struct request_header __header;
+    obj_handle_t manager;
+    int callback_mask;
+    char __pad_20[4];
+};
+struct callback_subscribe_reply
+{
+    struct reply_header __header;
+};
+
+enum registry_event_type
+{
+    placeholder
+};
+
+enum operation_type { CREATE_PROC, DUP_PROC, CREATE_THRD, DUP_THRD };
+
+typedef union
+{
+    int cb_type;
+    struct
+    {
+        int cb_type;
+        int create;
+        process_id_t pid;
+        process_id_t ppid;
+    } process_life;
+    struct
+    {
+        int cb_type;
+        int create;
+        process_id_t pid;
+        thread_id_t tid;
+    } thread_life;
+    struct
+    {
+        int cb_type;
+        process_id_t pid;
+        client_ptr_t base;
+        mem_size_t size;
+    } image_life;
+    struct
+    {
+        int cb_type;
+        enum registry_event_type event_type;
+    } registry_event;
+    struct
+    {
+        int cb_type;
+        enum operation_type op_type;
+        unsigned int access;
+        unsigned int status;
+        process_id_t source_pid;
+        process_id_t target_pid;
+        obj_handle_t object;
+        unsigned int padding;
+    } handle_event;
+} krnl_cbdata_t;
+
+enum kernel_callback_type
+{
+    SERVER_CALLBACK_PROC_LIFE = 0x1,
+    SERVER_CALLBACK_THRD_LIFE = 0x2,
+    SERVER_CALLBACK_IMAGE_LIFE = 0x4,
+    SERVER_CALLBACK_REGISTRY_EVENT = 0x8,
+    SERVER_CALLBACK_HANDLE_EVENT = 0x10
+};
+
+struct get_next_callback_event_request
+{
+    struct request_header __header;
+    obj_handle_t manager;
+};
+struct get_next_callback_event_reply
+{
+    struct reply_header __header;
+    krnl_cbdata_t cb_data;
+    thread_id_t   client_tid;
+    char __pad_44[4];
+    client_ptr_t  client_thread;
+    /* VARARG(string_paramenter,unicode_str); */
+};
+
+struct attach_process_request
+{
+    struct request_header __header;
+    obj_handle_t manager;
+    client_ptr_t process;
+    int detach;
+    char __pad_28[4];
+};
+struct attach_process_reply
+{
+    struct reply_header __header;
+};
 
 
 struct make_process_system_request
@@ -6119,6 +6294,8 @@ enum request
     REQ_new_process,
     REQ_exec_process,
     REQ_get_new_process_info,
+    REQ_wait_proc_init,
+    REQ_wait_thread_init,
     REQ_new_thread,
     REQ_get_startup_info,
     REQ_init_process_done,
@@ -6137,7 +6314,9 @@ enum request
     REQ_load_dll,
     REQ_unload_dll,
     REQ_queue_apc,
+    REQ_finalize_apc,
     REQ_get_apc_result,
+    REQ_open_handle,
     REQ_close_handle,
     REQ_socket_cleanup,
     REQ_set_handle_info,
@@ -6392,6 +6571,9 @@ enum request
     REQ_grab_kernel_object,
     REQ_release_kernel_object,
     REQ_get_kernel_object_handle,
+    REQ_callback_subscribe,
+    REQ_get_next_callback_event,
+    REQ_attach_process,
     REQ_make_process_system,
     REQ_get_token_statistics,
     REQ_get_token_elevation_type,
@@ -6442,6 +6624,8 @@ union generic_request
     struct new_process_request new_process_request;
     struct exec_process_request exec_process_request;
     struct get_new_process_info_request get_new_process_info_request;
+    struct wait_proc_init_request wait_proc_init_request;
+    struct wait_thread_init_request wait_thread_init_request;
     struct new_thread_request new_thread_request;
     struct get_startup_info_request get_startup_info_request;
     struct init_process_done_request init_process_done_request;
@@ -6460,7 +6644,9 @@ union generic_request
     struct load_dll_request load_dll_request;
     struct unload_dll_request unload_dll_request;
     struct queue_apc_request queue_apc_request;
+    struct finalize_apc_request finalize_apc_request;
     struct get_apc_result_request get_apc_result_request;
+    struct open_handle_request open_handle_request;
     struct close_handle_request close_handle_request;
     struct socket_cleanup_request socket_cleanup_request;
     struct set_handle_info_request set_handle_info_request;
@@ -6715,6 +6901,9 @@ union generic_request
     struct grab_kernel_object_request grab_kernel_object_request;
     struct release_kernel_object_request release_kernel_object_request;
     struct get_kernel_object_handle_request get_kernel_object_handle_request;
+    struct callback_subscribe_request callback_subscribe_request;
+    struct get_next_callback_event_request get_next_callback_event_request;
+    struct attach_process_request attach_process_request;
     struct make_process_system_request make_process_system_request;
     struct get_token_statistics_request get_token_statistics_request;
     struct get_token_elevation_type_request get_token_elevation_type_request;
@@ -6763,6 +6952,8 @@ union generic_reply
     struct new_process_reply new_process_reply;
     struct exec_process_reply exec_process_reply;
     struct get_new_process_info_reply get_new_process_info_reply;
+    struct wait_proc_init_reply wait_proc_init_reply;
+    struct wait_thread_init_reply wait_thread_init_reply;
     struct new_thread_reply new_thread_reply;
     struct get_startup_info_reply get_startup_info_reply;
     struct init_process_done_reply init_process_done_reply;
@@ -6781,7 +6972,9 @@ union generic_reply
     struct load_dll_reply load_dll_reply;
     struct unload_dll_reply unload_dll_reply;
     struct queue_apc_reply queue_apc_reply;
+    struct finalize_apc_reply finalize_apc_reply;
     struct get_apc_result_reply get_apc_result_reply;
+    struct open_handle_reply open_handle_reply;
     struct close_handle_reply close_handle_reply;
     struct socket_cleanup_reply socket_cleanup_reply;
     struct set_handle_info_reply set_handle_info_reply;
@@ -7036,6 +7229,9 @@ union generic_reply
     struct grab_kernel_object_reply grab_kernel_object_reply;
     struct release_kernel_object_reply release_kernel_object_reply;
     struct get_kernel_object_handle_reply get_kernel_object_handle_reply;
+    struct callback_subscribe_reply callback_subscribe_reply;
+    struct get_next_callback_event_reply get_next_callback_event_reply;
+    struct attach_process_reply attach_process_reply;
     struct make_process_system_reply make_process_system_reply;
     struct get_token_statistics_reply get_token_statistics_reply;
     struct get_token_elevation_type_reply get_token_elevation_type_reply;
@@ -7080,7 +7276,7 @@ union generic_reply
 
 /* ### protocol_version begin ### */
 
-#define SERVER_PROTOCOL_VERSION 636
+#define SERVER_PROTOCOL_VERSION 675
 
 /* ### protocol_version end ### */
 

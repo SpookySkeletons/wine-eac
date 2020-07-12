@@ -130,7 +130,7 @@ static void sock_release_ifchange( struct sock *sock );
 static int sock_get_poll_events( struct fd *fd );
 static void sock_poll_event( struct fd *fd, int event );
 static enum server_fd_type sock_get_fd_type( struct fd *fd );
-static int sock_ioctl( struct fd *fd, ioctl_code_t code, struct async *async );
+static int sock_ioctl( struct fd *fd, ioctl_code_t code, client_ptr_t in_buf, client_ptr_t out_buf, struct async *async );
 static void sock_queue_async( struct fd *fd, struct async *async, int type, int count );
 static void sock_reselect_async( struct fd *fd, struct async_queue *queue );
 static int sock_close_handle( struct object *obj, struct process *process, obj_handle_t handle );
@@ -540,7 +540,7 @@ static enum server_fd_type sock_get_fd_type( struct fd *fd )
     return FD_TYPE_SOCKET;
 }
 
-static int sock_ioctl( struct fd *fd, ioctl_code_t code, struct async *async )
+static int sock_ioctl( struct fd *fd, ioctl_code_t code, client_ptr_t in_buf, client_ptr_t out_buf, struct async *async )
 {
     struct sock *sock = get_fd_user( fd );
 

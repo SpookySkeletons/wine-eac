@@ -414,6 +414,7 @@ LONG WINAPI RtlCompareString( const STRING *s1, const STRING *s2, BOOLEAN CaseIn
 LONG WINAPI RtlCompareUnicodeString( const UNICODE_STRING *s1, const UNICODE_STRING *s2,
                                      BOOLEAN CaseInsensitive )
 {
+    //ERR("%s %s %u; return_addr=%p\n", debugstr_us(s1), debugstr_us(s2), CaseInsensitive, __builtin_return_address(0));
     return RtlCompareUnicodeStrings( s1->Buffer, s1->Length / sizeof(WCHAR),
                                      s2->Buffer, s2->Length / sizeof(WCHAR), CaseInsensitive );
 }

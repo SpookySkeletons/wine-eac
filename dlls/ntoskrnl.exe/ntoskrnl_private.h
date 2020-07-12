@@ -22,12 +22,27 @@
 #define __WINE_NTOSKRNL_PRIVATE_H
 
 #include "wine/asm.h"
+#include "wine/list.h"
 
 static inline LPCSTR debugstr_us( const UNICODE_STRING *us )
 {
     if (!us) return "<null>";
     return debugstr_wn( us->Buffer, us->Length / sizeof(WCHAR) );
 }
+
+#define TO_USER(x) (typeof(x)) ((ULONG_PTR)x & 0x0000ffffffffffff)
+#define TO_KRNL(x) (PVOID) (x ? (ULONG_PTR)x | 0xffff000000000000 : (ULONG_PTR)x)
+
+typedef void (*kernel_struct_accessed)(void *base, DWORD offset, BOOL write, void *ip);
+
+void *register_kernel_struct(void *obj, unsigned int size, kernel_struct_accessed callback);
+void forget_kernel_struct(void *obj);
+
+void flush_emulated_memory(void);
+
+int suspend_all_other_threads(void);
+void resume_system_threads(void);
+
 
 struct _OBJECT_TYPE
 {
@@ -39,15 +54,37 @@ struct _OBJECT_TYPE
 struct _EPROCESS
 {
     DISPATCHER_HEADER header;
+    /* padding to require a 32-bit displacement */
+    CHAR padding[0x200 - sizeof(DISPATCHER_HEADER)];
+    PVOID handle_table;
     PROCESS_BASIC_INFORMATION info;
+    CHAR image_file_name[16];
+    /* TODO: we should store a section object here instead */
+    PFILE_OBJECT file_object;
+    PVOID section_base_address;
+    LONGLONG create_time;
+    BOOL wow64;
 };
-
+//356
 struct _KTHREAD
 {
     DISPATCHER_HEADER header;
+    /* padding to require a 32-bit displacement */
+    CHAR padding[356 - sizeof(DISPATCHER_HEADER)];
+    BYTE bruh;
+    KPROCESSOR_MODE prev_mode;
     PEPROCESS process;
     CLIENT_ID id;
     unsigned int critical_region;
+    LIST_ENTRY ApcListHead[2];
+    CRITICAL_SECTION apc_cs;
+    HANDLE apc_event;
+    HANDLE imposter_thread;
+    struct list system_thread_entry;
+    PVOID user_input_copy, user_output_copy;
+    PBYTE user_input, user_output;
+    BOOL bruhther;
+    CHAR more_padding[750];
 };
 
 struct _ETHREAD
@@ -80,6 +117,9 @@ void pnp_manager_enumerate_root_devices( const WCHAR *driver_name ) DECLSPEC_HID
 void pnp_manager_start(void) DECLSPEC_HIDDEN;
 void pnp_manager_stop(void) DECLSPEC_HIDDEN;
 
+void disk_driver_start(void) DECLSPEC_HIDDEN;
+void disk_driver_stop(void) DECLSPEC_HIDDEN;
+
 static const WCHAR servicesW[] = {'\\','R','e','g','i','s','t','r','y',
                                   '\\','M','a','c','h','i','n','e',
                                   '\\','S','y','s','t','e','m',
@@ -92,4 +132,6 @@ struct wine_device
     DEVICE_OBJECT device_obj;
     DEVICE_RELATIONS *children;
 };
+
+extern DWORD64 eac_base;
 #endif

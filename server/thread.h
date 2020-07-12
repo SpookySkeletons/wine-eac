@@ -31,6 +31,7 @@ struct thread_apc;
 struct debug_ctx;
 struct debug_event;
 struct msg_queue;
+struct startup_info;
 
 enum run_state
 {
@@ -61,6 +62,7 @@ struct thread
     struct msg_queue      *queue;         /* message queue */
     struct thread_wait    *wait;          /* current wait condition if sleeping */
     struct list            system_apc;    /* queue of system async procedure calls */
+    struct list            kernel_apc;    /* queue of kernel async procedure calls */
     struct list            user_apc;      /* queue of user async procedure calls */
     struct inflight_fd     inflight[MAX_INFLIGHT_FDS];  /* fds currently in flight */
     unsigned int           error;         /* current error code */
@@ -93,6 +95,9 @@ struct thread
     data_size_t            desc_len;      /* thread description length in bytes */
     WCHAR                 *desc;          /* thread description string */
     struct timeout_user   *exit_poll;     /* poll if the thread/process has exited already */
+    struct process *       attached_process;
+    struct object         *callback_init_event;
+    struct startup_info   *startup_info;
     int                    shm_fd;        /* file descriptor for thread local shared memory */
     shmlocal_t            *shm;           /* thread local shared memory pointer */
 };
@@ -137,6 +142,7 @@ extern int is_cpu_supported( enum cpu_type cpu );
 extern unsigned int get_supported_cpu_mask(void);
 extern int suspend_thread( struct thread *thread );
 extern int resume_thread( struct thread *thread );
+extern int is_thread( struct object *obj );
 
 /* ptrace functions */
 

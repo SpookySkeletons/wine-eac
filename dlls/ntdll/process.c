@@ -86,6 +86,15 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
 {
     NTSTATUS ret;
     BOOL self;
+
+    ERR("%x %x; caller %p\n", handle, exit_code, __builtin_return_address(0) );
+    if (exit_code == -290717690 || exit_code == -290717692 || exit_code == -290717687)
+    {
+        ERR("EAC exit code\n");
+        //return STATUS_SUCCESS;
+        //while(TRUE){asm("");}
+    }
+
     SERVER_START_REQ( terminate_process )
     {
         req->handle    = wine_server_obj_handle( handle );
@@ -1830,6 +1839,14 @@ NTSTATUS WINAPI RtlCreateUserProcess( UNICODE_STRING *path, ULONG attributes,
         status = reply->exit_code;
     }
     SERVER_END_REQ;
+
+    {
+        LARGE_INTEGER dont_wait;
+
+        /* allow APCs to run */
+        dont_wait.QuadPart = 0;
+        NtDelayExecution(TRUE, &dont_wait);
+    }
 
     if (success)
     {

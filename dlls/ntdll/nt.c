@@ -2712,7 +2712,7 @@ NTSTATUS WINAPI NtQuerySystemInformation(
     NTSTATUS    ret = STATUS_SUCCESS;
     ULONG       len = 0;
 
-    TRACE("(0x%08x,%p,0x%08x,%p)\n",
+    ERR("(0x%08x,%p,0x%08x,%p)\n",
           SystemInformationClass,SystemInformation,Length,ResultLength);
 
     switch (SystemInformationClass)
@@ -3095,7 +3095,10 @@ NTSTATUS WINAPI NtQuerySystemInformation(
                         shi->Handle[i].HandleValue  = info[i].handle;
                         shi->Handle[i].AccessMask   = info[i].access;
                         shi->Handle[i].ObjectType   = translate_object_index(info[i].type);
-                        /* FIXME: Fill out HandleFlags, ObjectPointer */
+                        shi->Handle[i].ObjectPointer = wine_server_get_ptr(info[i].object);
+                        //if (!shi->Handle[i].ObjectPointer)
+                        //    ERR("yielding empty ObjectPointer\n");
+                        /* FIXME: Fill out HandleFlags */
                     }
                 }
                 else if (ret == STATUS_BUFFER_TOO_SMALL)
@@ -3246,6 +3249,29 @@ NTSTATUS WINAPI NtQuerySystemInformation(
             else ret = STATUS_INFO_LENGTH_MISMATCH;
         }
 	break;
+    case SystemBigPoolInformation:
+        {
+            typedef struct _SYSTEM_BITPOOL_INFORMATION
+            {
+                ULONG Count;
+            } SYSTEM_BIGPOOL_INFORMATION;
+
+            SYSTEM_BIGPOOL_INFORMATION sbpi;
+            sbpi.Count = 0;
+
+            len = sizeof(sbpi);
+
+            if (Length >= len)
+            {
+                if (!SystemInformation) ret = STATUS_ACCESS_VIOLATION;
+                else
+                {
+                    memcpy( SystemInformation, &sbpi, len);
+                }
+            }
+            else ret = STATUS_INFO_LENGTH_MISMATCH;
+        }
+    break;
     case SystemLogicalProcessorInformation:
         {
             SYSTEM_LOGICAL_PROCESSOR_INFORMATION *buf;
@@ -3309,6 +3335,58 @@ NTSTATUS WINAPI NtQuerySystemInformation(
             }
         }
         break;
+    case SystemBootEnvironmentInformation:
+    {
+        SYSTEM_BOOT_ENVIRONMENT_INFORMATION sbei;
+        sbei.FirmwareType = FirmwareTypeUefi;
+        sbei.BootFlags = 0x1;
+        sbei.BootIdentifier.Data1 = 0xdeadbeef;
+        sbei.BootIdentifier.Data2 = 0xdead;
+        sbei.BootIdentifier.Data3 = 0xbeef;
+        sbei.BootIdentifier.Data4[0] = 0xde;
+        sbei.BootIdentifier.Data4[1] = 0xad;
+        sbei.BootIdentifier.Data4[2] = 0xbe;
+        sbei.BootIdentifier.Data4[3] = 0xef;
+        sbei.BootIdentifier.Data4[4] = 0xde;
+        sbei.BootIdentifier.Data4[5] = 0xad;
+        sbei.BootIdentifier.Data4[6] = 0xbe;
+        sbei.BootIdentifier.Data4[7] = 0xef;
+
+        len = sizeof(sbei);
+
+        if (Length >= len)
+        {
+            if (!SystemInformation) ret = STATUS_ACCESS_VIOLATION;
+            else memcpy(SystemInformation, &sbei, len);
+        }
+        else ret = STATUS_INFO_LENGTH_MISMATCH;
+        break;
+    }
+    case SystemCodeIntegrityInformation:
+    {
+        SYSTEM_CODEINTEGRITY_INFORMATION *sci = (SYSTEM_CODEINTEGRITY_INFORMATION*)SystemInformation;
+        len = sizeof(*sci);
+        if (Length < len)
+        {
+            ret = STATUS_INFO_LENGTH_MISMATCH;
+            break;
+        }
+        if (!SystemInformation)
+        {
+            ret = STATUS_ACCESS_VIOLATION;
+            break;
+        }
+        if (sci->Length < len)
+        {
+            ret = STATUS_INFO_LENGTH_MISMATCH;
+            break;
+        }
+
+        sci->Length = len;
+        sci->CodeIntegrityOptions = 0x1;
+
+        break;
+    }
     case SystemExtendedProcessInformation:
         FIXME("SystemExtendedProcessInformation, len %u, buffer %p, stub!\n", Length, SystemInformation);
         memset(SystemInformation, 0, Length);

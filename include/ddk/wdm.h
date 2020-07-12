@@ -446,6 +446,13 @@ typedef struct _DRIVER_OBJECT *PDRIVER_OBJECT;
 /* Irp definitions */
 typedef UCHAR KIRQL, *PKIRQL;
 typedef CCHAR KPROCESSOR_MODE;
+typedef enum _KAPC_ENVIRONMENT
+{
+    OriginalApcEnvironment,
+    AttachedApcEnvironment,
+    CurrentApcEnvironment,
+    InsertApcEnvironment
+} KAPC_ENVIRONMENT, *PKAPC_ENVIRONMENT;
 
 typedef VOID (WINAPI *PDRIVER_CANCEL)(
   IN struct _DEVICE_OBJECT  *DeviceObject,
@@ -1383,6 +1390,9 @@ typedef EX_CALLBACK_FUNCTION *PEX_CALLBACK_FUNCTION;
 
 typedef ULONG OB_OPERATION;
 
+#define OB_OPERATION_HANDLE_CREATE   0x00000001
+#define OB_OPERATION_HANDLE_DUPLICATE   0x00000002
+
 typedef struct _OB_PRE_CREATE_HANDLE_INFORMATION {
     ACCESS_MASK DesiredAccess;
     ACCESS_MASK OriginalDesiredAccess;
@@ -1483,7 +1493,7 @@ typedef enum _WORK_QUEUE_TYPE {
 
 typedef void (WINAPI *PIO_WORKITEM_ROUTINE)(PDEVICE_OBJECT,void*);
 
-NTSTATUS WINAPI ObCloseHandle(IN HANDLE handle);
+NTSTATUS WINAPI ObCloseHandle(IN HANDLE handle, IN KPROCESSOR_MODE mode);
 
 #ifdef NONAMELESSUNION
 # ifdef NONAMELESSSTRUCT
@@ -1676,7 +1686,7 @@ static inline void *MmGetSystemAddressForMdlSafe(MDL *mdl, ULONG priority)
 void    FASTCALL ObfReferenceObject(void*);
 void      WINAPI ObDereferenceObject(void*);
 USHORT    WINAPI ObGetFilterVersion(void);
-NTSTATUS  WINAPI ObRegisterCallbacks(POB_CALLBACK_REGISTRATION*, void**);
+NTSTATUS  WINAPI ObRegisterCallbacks(POB_CALLBACK_REGISTRATION, void**);
 NTSTATUS  WINAPI ObReferenceObjectByHandle(HANDLE,ACCESS_MASK,POBJECT_TYPE,KPROCESSOR_MODE,PVOID*,POBJECT_HANDLE_INFORMATION);
 NTSTATUS  WINAPI ObReferenceObjectByName(UNICODE_STRING*,ULONG,ACCESS_STATE*,ACCESS_MASK,POBJECT_TYPE,KPROCESSOR_MODE,void*,void**);
 NTSTATUS  WINAPI ObReferenceObjectByPointer(void*,ACCESS_MASK,POBJECT_TYPE,KPROCESSOR_MODE);

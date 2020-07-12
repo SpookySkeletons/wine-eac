@@ -3601,6 +3601,8 @@ NTSTATUS WINAPI NtOpenSection( HANDLE *handle, ACCESS_MASK access, const OBJECT_
 
     if ((ret = validate_open_object_attributes( attr ))) return ret;
 
+    ERR("(%p %x %p[%s])\n", handle, access, attr, attr->ObjectName ? debugstr_us(attr->ObjectName) : "");
+
     SERVER_START_REQ( open_mapping )
     {
         req->access     = access;

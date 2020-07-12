@@ -33,6 +33,7 @@
 #include "wine/asm.h"
 #include "wine/debug.h"
 #include "wine/heap.h"
+#include "wine/server.h"
 
 #include "ntoskrnl_private.h"
 
@@ -62,8 +63,8 @@ NTSTATUS WINAPI KeWaitForMultipleObjects(ULONG count, void *pobjs[],
     NTSTATUS ret;
     ULONG i;
 
-    TRACE("count %u, objs %p, wait_type %u, reason %u, mode %d, alertable %u, timeout %p, wait_blocks %p.\n",
-        count, objs, wait_type, reason, mode, alertable, timeout, wait_blocks);
+    TRACE("count %u, objs %p, wait_type %u, reason %u, mode %d, alertable %u, timeout %s, wait_blocks %p.\n",
+        count, objs, wait_type, reason, mode, alertable, timeout ? wine_dbgstr_longlong(timeout->QuadPart) : "(null)", wait_blocks);
 
     /* We co-opt DISPATCHER_HEADER.WaitListHead:
      * Blink stores a handle to the synchronization object,
@@ -110,6 +111,8 @@ NTSTATUS WINAPI KeWaitForMultipleObjects(ULONG count, void *pobjs[],
     LeaveCriticalSection( &sync_cs );
 
     ret = NtWaitForMultipleObjects( count, handles, (wait_type == WaitAny), alertable, timeout );
+
+    TRACE("awoke, status = %x\n", ret);
 
     EnterCriticalSection( &sync_cs );
     for (i = 0; i < count; i++)
@@ -166,6 +169,8 @@ NTSTATUS WINAPI KeWaitForMultipleObjects(ULONG count, void *pobjs[],
 NTSTATUS WINAPI KeWaitForSingleObject( void *obj, KWAIT_REASON reason,
     KPROCESSOR_MODE mode, BOOLEAN alertable, LARGE_INTEGER *timeout )
 {
+    TRACE("obj = %p caller=%p\n", obj, __builtin_return_address(0));
+
     return KeWaitForMultipleObjects( 1, &obj, WaitAny, reason, mode, alertable, timeout, NULL );
 }
 
@@ -184,7 +189,7 @@ NTSTATUS WINAPI KeWaitForMutexObject( PRKMUTEX mutex, KWAIT_REASON reason,
  */
 void WINAPI KeInitializeEvent( PRKEVENT event, EVENT_TYPE type, BOOLEAN state )
 {
-    TRACE("event %p, type %u, state %u.\n", event, type, state);
+    TRACE("event %p, type %u, state %u.\ncaller=%p\n", event, type, state, __builtin_return_address(0));
 
     event->Header.Type = type;
     event->Header.SignalState = state;
@@ -308,6 +313,26 @@ LONG WINAPI KeResetEvent( PRKEVENT event )
 void WINAPI KeClearEvent( PRKEVENT event )
 {
     KeResetEvent( event );
+}
+
+LONG WINAPI KeReadStateEvent( PRKEVENT event )
+{
+    HANDLE handle;
+
+    TRACE("event %p.\n", event);
+
+    if (event->Header.WaitListHead.Blink == INVALID_HANDLE_VALUE)
+    {
+        if (!(ObOpenObjectByPointer( event, OBJ_KERNEL_HANDLE, NULL, EVENT_QUERY_STATE, NULL, KernelMode, &handle )))
+        {
+            EVENT_BASIC_INFORMATION event_info;
+            if (!(NtQueryEvent( handle, EventBasicInformation, &event_info, sizeof(event_info), NULL)))
+                event->Header.SignalState = event_info.EventState;
+            NtClose( handle );
+        }
+    }
+    TRACE("->%d\n", event->Header.SignalState);
+    return event->Header.SignalState;
 }
 
 /***********************************************************************
@@ -487,7 +512,7 @@ static inline void small_pause(void)
  */
 void WINAPI KeAcquireSpinLockAtDpcLevel( KSPIN_LOCK *lock )
 {
-    TRACE("lock %p.\n", lock);
+    TRACE("lock %p %p.\n", lock, *lock);
     while (!InterlockedCompareExchangePointer( (void **)lock, (void *)1, (void *)0 ))
         small_pause();
 }
@@ -596,6 +621,202 @@ void WINAPI KeReleaseInStackQueuedSpinLock( KLOCK_QUEUE_HANDLE *queue )
     KeReleaseInStackQueuedSpinLockFromDpcLevel( queue );
 }
 #endif
+
+void WINAPI KeInitializeApc(PRKAPC apc, PRKTHREAD thread, KAPC_ENVIRONMENT env, PKKERNEL_ROUTINE krnl_routine,
+                            PKRUNDOWN_ROUTINE rundown_routine, PKNORMAL_ROUTINE normal_routine, KPROCESSOR_MODE apc_mode, PVOID ctx)
+{
+    TRACE("apc %p thread %p env %u krnl_routine %p rundown_routine %p normal_routine %p apc_mode %u ctx %p\n",
+           apc, thread, env, krnl_routine, rundown_routine, normal_routine, apc_mode, ctx);
+
+    if (env != OriginalApcEnvironment)
+        FIXME("Unhandled APC_ENVIRONMENT\n");
+
+    apc->Type = 18;
+    apc->Size = sizeof(*apc);
+    apc->Thread = thread;
+    apc->ApcStateIndex = env;
+    apc->KernelRoutine = krnl_routine;
+    apc->RundownRoutine = rundown_routine;
+    apc->NormalRoutine = normal_routine;
+    apc->Inserted = FALSE;
+    if (apc->NormalRoutine)
+    {
+        apc->ApcMode = apc_mode;
+        apc->NormalContext = ctx;
+    }
+    else
+    {
+        apc->ApcMode = KernelMode;
+        apc->NormalContext = NULL;
+    }
+}
+
+static DWORD WINAPI thread_impersonate_loop(PVOID context)
+{
+    PKTHREAD thread = (PKTHREAD) context;
+    PKAPC apc;
+    HANDLE apc_handle;
+    PKNORMAL_ROUTINE nrml_routine;
+    PVOID nrml_ctx;
+    PVOID sysarg1;
+    PVOID sysarg2;
+    PKAPC wait_apcs[3];
+    HANDLE wait_handles[3];
+    DWORD wait_count;
+    NTSTATUS stat;
+
+    NtCurrentTeb()->SystemReserved1[15] = thread;
+
+    for(;;)
+    {
+        wait_handles[0] = thread->apc_event;
+        wait_count = 1;
+        EnterCriticalSection(TO_USER(&thread->apc_cs));
+        if (!IsListEmpty(&thread->ApcListHead[KernelMode]))
+        {
+            wait_apcs[0] = CONTAINING_RECORD(thread->ApcListHead[KernelMode].Flink, KAPC, ApcListEntry);
+            wait_handles[1] = wine_server_ptr_handle(wait_apcs[0]->Spare0);
+            wait_count++;
+        }
+        if (!IsListEmpty(&thread->ApcListHead[UserMode]))
+        {
+            wait_apcs[wait_count - 1] = CONTAINING_RECORD(thread->ApcListHead[UserMode].Flink, KAPC, ApcListEntry);
+            wait_handles[wait_count] = wine_server_ptr_handle(wait_apcs[wait_count - 1]->Spare0);
+            wait_count++;
+        }
+        LeaveCriticalSection(TO_USER(&thread->apc_cs));
+
+        TRACE("%u %p %p %p\n", wait_count, wait_handles[0], wait_handles[1], wait_handles[2]);
+        stat = NtWaitForMultipleObjects(wait_count, wait_handles, WaitAny, FALSE, NULL);
+        if (stat < 0)
+        {
+            ERR("Failed to wait for APC, trying again? err=%x\n", stat);
+            continue;
+        }
+        if (stat == WAIT_OBJECT_0)
+            continue;
+
+        apc = wait_apcs[stat - 1];
+
+        EnterCriticalSection(TO_USER(&thread->apc_cs));
+        RemoveEntryList(&apc->ApcListEntry);
+        LeaveCriticalSection(TO_USER(&thread->apc_cs));
+
+        apc->Inserted = FALSE;
+
+        apc_handle = wine_server_ptr_handle(apc->Spare0);
+        nrml_routine = apc->NormalRoutine;
+        nrml_ctx = apc->NormalContext;
+        sysarg1 = apc->SystemArgument1;
+        sysarg2 = apc->SystemArgument2;
+
+        TRACE("\1%04x:%04x:Call %s APC %p\n", thread->process->info.UniqueProcessId, thread->id.UniqueThread, apc->NormalRoutine ? "Normal" : "Special", apc->KernelRoutine);
+        apc->KernelRoutine(apc, &nrml_routine, &nrml_ctx, &sysarg1, &sysarg2);
+        TRACE("\1%04x:%04x:Ret %s APC %p\n", thread->process->info.UniqueProcessId, thread->id.UniqueThread, apc->NormalRoutine ? "Normal" : "Special", apc->KernelRoutine);
+
+        if (nrml_routine && apc->ApcMode == KernelMode)
+        {
+            TRACE("\1%04x:%04x:Call kernel APC NormalRoutine %p\n", thread->process->info.UniqueProcessId, thread->id.UniqueThread, nrml_routine);
+            nrml_routine(nrml_ctx, sysarg1, sysarg1);
+            TRACE("\1%04x:%04x:Ret kernel APC NormalRoutine %p\n", thread->process->info.UniqueProcessId, thread->id.UniqueThread, nrml_routine);
+        }
+
+        SERVER_START_REQ(finalize_apc)
+        {
+            req->handle = wine_server_obj_handle(apc_handle);
+            if (apc->ApcMode == UserMode && nrml_routine)
+            {
+                TRACE("finalizing APC as %p\n", nrml_routine);
+                req->call.type = APC_USER;
+                req->call.user.func = wine_server_client_ptr(nrml_routine);
+                req->call.user.args[0] = (ULONG_PTR) nrml_ctx;
+                req->call.user.args[1] = (ULONG_PTR) sysarg1;
+                req->call.user.args[2] = (ULONG_PTR) sysarg2;
+            }
+            else
+                req->call.type = APC_NONE;
+            if ((stat = wine_server_call( req )))
+            {
+                ERR("Failed to finalize apc! err=%x\n", stat);
+            }
+        }
+        SERVER_END_REQ;
+
+        CloseHandle(apc_handle);
+    }
+
+    return 0;
+}
+
+BOOLEAN WINAPI KeInsertQueueApc(PRKAPC apc, PVOID sysarg1, PVOID sysarg2, KPRIORITY increment)
+{
+    NTSTATUS stat;
+    HANDLE thread_handle;
+    obj_handle_t apc_handle;
+
+    TRACE("apc %p arg1 %p arg2 %p inc %u\ncaller %p\n", apc, sysarg1, sysarg2, increment, __builtin_return_address(0));
+
+    if(!apc->Thread->imposter_thread)
+    {
+        InitializeCriticalSection(&apc->Thread->apc_cs);
+        apc->Thread->apc_event = CreateEventA(NULL, FALSE, FALSE, NULL);
+        apc->Thread->imposter_thread = CreateThread(NULL, 0, thread_impersonate_loop, apc->Thread, 0, NULL);
+    }
+    if (!apc->Thread->imposter_thread)
+    {
+        ERR("Failed to create imposter thread\n");
+        DeleteCriticalSection(&apc->Thread->apc_cs);
+        return FALSE;
+    }
+
+    if ((stat = ObOpenObjectByPointer(apc->Thread, OBJ_KERNEL_HANDLE, NULL, THREAD_SET_CONTEXT, PsThreadType, KernelMode, &thread_handle)))
+    {
+        ERR("Failed to open APC thread; err=%x\n", stat);
+        return FALSE;
+    }
+
+    SERVER_START_REQ( queue_apc )
+    {
+        req->handle = wine_server_obj_handle(thread_handle);
+        req->call.type = apc->ApcMode ? APC_REAL_USER : APC_REAL_KERNEL;
+        req->call.real_apc.special_apc = apc->ApcMode == APC_REAL_KERNEL && !apc->NormalRoutine;
+        stat = wine_server_call( req );
+        apc_handle = reply->handle;
+    }
+    SERVER_END_REQ;
+
+    CloseHandle(thread_handle);
+
+    if (stat)
+    {
+        ERR("Failed to queue real APC, err=%x\n", stat);
+        return FALSE;
+    }
+
+    apc->SystemArgument1 = sysarg1;
+    apc->SystemArgument2 = sysarg2;
+    apc->Inserted = TRUE;
+    apc->Spare0 = apc_handle;
+
+    EnterCriticalSection(TO_USER(&apc->Thread->apc_cs));
+    InsertTailList(&apc->Thread->ApcListHead[(DWORD)apc->ApcMode], &apc->ApcListEntry);
+    if (!(SetEvent(apc->Thread->apc_event)))
+        ERR("Failed to set apc event!\n");
+    LeaveCriticalSection(TO_USER(&apc->Thread->apc_cs));
+    return TRUE;
+}
+
+BOOLEAN KeTestAlertThread(KPROCESSOR_MODE mode)
+{
+    FIXME("stub! %u\n", mode);
+    return TRUE;
+}
+
+BOOLEAN KeAlertThread(PKTHREAD thread, KPROCESSOR_MODE mode)
+{
+    FIXME("stub! %p mode %u\n", thread, mode);
+    return TRUE;
+}
 
 static KSPIN_LOCK cancel_lock;
 
@@ -1202,8 +1423,8 @@ ULONG WINAPI ExIsResourceAcquiredSharedLite( ERESOURCE *resource )
 void WINAPI IoInitializeRemoveLockEx( IO_REMOVE_LOCK *lock, ULONG tag,
         ULONG max_minutes, ULONG max_count, ULONG size )
 {
-    TRACE("lock %p, tag %#x, max_minutes %u, max_count %u, size %u.\n",
-            lock, tag, max_minutes, max_count, size);
+    TRACE("lock %p, tag %#x, max_minutes %u, max_count %u, size %u.\nreturn address = %p\n",
+            lock, tag, max_minutes, max_count, size, __builtin_return_address(0));
 
     KeInitializeEvent( &lock->Common.RemoveEvent, NotificationEvent, FALSE );
     lock->Common.Removed = FALSE;

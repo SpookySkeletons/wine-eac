@@ -111,7 +111,13 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateRemoteThreadEx( HANDLE process, SECURITY_A
 HANDLE WINAPI DECLSPEC_HOTPATCH CreateThread( SECURITY_ATTRIBUTES *sa, SIZE_T stack,
                                               LPTHREAD_START_ROUTINE start, LPVOID param,
                                               DWORD flags, LPDWORD id )
-{
+{TRACE("%p %p\n", __builtin_return_address(0), start);
+    if (start == (PVOID)0x6c6940 || start == (PVOID)0x6c5940 || start ==(PVOID)0x6c3940 || start == (PVOID)0x6c9940
+     || start == (PVOID)0x6c1940 || start == (PVOID)0x6c2940 || start ==(PVOID)0x6c4940 || start == (PVOID)0x6c7940
+     || start == (PVOID)0x6c8940 || start == (PVOID)0x6ca940)
+    {
+        TRACE("real start %p\n", ((void***)param)[0][3]);
+    }
      return CreateRemoteThread( GetCurrentProcess(), sa, stack, start, param, flags, id );
 }
 

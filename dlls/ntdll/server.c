@@ -91,6 +91,7 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(server);
 WINE_DECLARE_DEBUG_CHANNEL(winediag);
+WINE_DECLARE_DEBUG_CHANNEL(sync);
 
 /* just in case... */
 #undef EXT2_IOC_GETFLAGS
@@ -414,6 +415,47 @@ int wait_select_reply( void *cookie )
 }
 
 
+#ifdef __x86_64__
+__ASM_GLOBAL_FUNC( KiUserApcDispatcher,
+                   "movq 0x0(%rsp),%rcx\n\t" /* P1Home/NormalContext */
+                   "movq 0x8(%rsp),%rdx\n\t" /* P2Home/SysArg1 */
+                   "movq 0x10(%rsp),%r8\n\t" /* P3Home/SysArg2 */
+                   "leaq (%rsp),%r9\n\t" /* &context->r9 */
+                   "callq *0x18(%rsp)\n\t" /* call P4Home/NormalRoutine */
+                   "leaq (%rsp),%rcx\n\t"
+                   "movb $0x1,%dl\n\t"
+                   "call " __ASM_NAME("NtContinue") "\n\t"
+                   "nop\n\t"
+                   "int3"
+                   //"ret"
+                   )
+
+extern void WINAPI KiUserApcDispatcher(void);
+
+
+void invoke_user_apc_x86_64(void *func, apc_param_t arg1, apc_param_t arg2, apc_param_t arg3)
+{
+    CONTEXT ctx, start_ctx;
+
+    ERR("invoke user APC\n");
+
+    NtGetContextThread(GetCurrentThread(), &ctx);
+    NtGetContextThread(GetCurrentThread(), &start_ctx);
+    ctx.P1Home = arg1;
+    ctx.P2Home = arg2;
+    ctx.P3Home = arg3;
+    ctx.P4Home = (DWORD64) func;
+    ctx.Rip = (DWORD64) &&done;
+    start_ctx.Rip = (DWORD64) KiUserApcDispatcher;
+    start_ctx.Rsp = (DWORD64) &ctx;
+    NtSetContextThread(GetCurrentThread(), &start_ctx);
+    done:
+    return;
+}
+#else
+PVOID KiUserApcDispatcher;
+#endif
+
 /***********************************************************************
  *              invoke_apc
  *
@@ -435,7 +477,13 @@ void invoke_apc( const apc_call_t *call, apc_result_t *result )
     case APC_USER:
     {
         void (WINAPI *func)(ULONG_PTR,ULONG_PTR,ULONG_PTR) = wine_server_get_ptr( call->user.func );
+        ERR("calling user APC %p(%llx %llx %llx)\n", func, call->user.args[0], call->user.args[1], call->user.args[2]);
+//#ifndef __x86_64__
         func( call->user.args[0], call->user.args[1], call->user.args[2] );
+//#else
+//        invoke_user_apc_x86_64(func, call->user.args[0], call->user.args[1], call->user.args[2]);
+//#endif
+        ERR("ret APC %p\n", func);
         break;
     }
     case APC_TIMER:
@@ -880,7 +928,7 @@ static union fd_cache_entry fd_cache_initial_block[FD_CACHE_BLOCK_SIZE];
 
 static inline unsigned int handle_to_index( HANDLE handle, unsigned int *entry )
 {
-    unsigned int idx = (wine_server_obj_handle(handle) >> 2) - 1;
+    unsigned int idx = ((wine_server_obj_handle(handle) & ~KERNEL_HANDLE_FLAG) >> 2) - 1;
     *entry = idx / FD_CACHE_BLOCK_SIZE;
     return idx % FD_CACHE_BLOCK_SIZE;
 }
@@ -1617,6 +1665,7 @@ void server_init_process_done(void)
     void *entry = (char *)peb->ImageBaseAddress + nt->OptionalHeader.AddressOfEntryPoint;
     NTSTATUS status;
     int suspend;
+    HANDLE processed_event;
 
 #ifdef __APPLE__
     send_server_task_port();
@@ -1641,10 +1690,18 @@ void server_init_process_done(void)
         req->gui      = (nt->OptionalHeader.Subsystem != IMAGE_SUBSYSTEM_WINDOWS_CUI);
         status = wine_server_call( req );
         suspend = reply->suspend;
+        processed_event = wine_server_ptr_handle(reply->processed_event);
     }
     SERVER_END_REQ;
 
     assert( !status );
+
+    if (processed_event)
+    {
+        NtWaitForSingleObject(processed_event, FALSE, NULL);
+        NtClose(processed_event);
+    }
+
     signal_start_process( entry, suspend );
 }
 
@@ -1663,6 +1720,7 @@ size_t server_init_thread( void *entry_point, BOOL *suspend )
     int reply_pipe[2];
     struct sigaction sig_act;
     size_t info_size;
+    HANDLE processed_event;
 
     sig_act.sa_handler = SIG_IGN;
     sig_act.sa_flags   = 0;
@@ -1696,8 +1754,17 @@ size_t server_init_thread( void *entry_point, BOOL *suspend )
         server_start_time = reply->server_start;
         server_cpus       = reply->all_cpus;
         *suspend          = reply->suspend;
+        processed_event   = reply->processed_event;
     }
     SERVER_END_REQ;
+
+    if (processed_event)
+    {
+        ERR("waiting for thread start\n");
+        NtWaitForSingleObject(processed_event, FALSE, NULL);
+        ERR("waited for thread start\n");
+        NtClose(processed_event);
+    }
 
     /* initialize thread shared memory pointers */
     NtCurrentTeb()->Reserved5[1] = server_get_shared_memory( 0 );

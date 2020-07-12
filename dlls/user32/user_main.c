@@ -399,6 +399,8 @@ BOOL WINAPI DllMain( HINSTANCE inst, DWORD reason, LPVOID reserved )
     static HMODULE imm32_module;
     BOOL ret = TRUE;
 
+    IsBadStringPtrA("test", 4);
+
     switch(reason)
     {
     case DLL_PROCESS_ATTACH:

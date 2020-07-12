@@ -1,8 +1,8 @@
 @ stdcall -arch=!i386 ExAcquireFastMutex(ptr)
 @ stdcall -fastcall ExAcquireFastMutexUnsafe(ptr)
-@ stub ExAcquireRundownProtection
+@ stdcall ExAcquireRundownProtection(ptr)
 @ stub ExAcquireRundownProtectionEx
-@ stub ExInitializeRundownProtection
+@ stub ExInitializeRundownProtection(ptr)
 @ stub ExInterlockedAddLargeStatistic
 @ stub ExInterlockedCompareExchange64
 @ stdcall -fastcall -arch=i386 ExInterlockedFlushSList(ptr) NTOSKRNL_ExInterlockedFlushSList
@@ -12,7 +12,7 @@
 @ stdcall -arch=!i386 ExReleaseFastMutex(ptr)
 @ stdcall -fastcall ExReleaseFastMutexUnsafe(ptr)
 @ stdcall -fastcall ExReleaseResourceLite(ptr)
-@ stub ExReleaseRundownProtection
+@ stdcall ExReleaseRundownProtection(ptr)
 @ stub ExReleaseRundownProtectionEx
 @ stub ExRundownCompleted
 @ stub ExWaitForRundownProtectionRelease
@@ -141,7 +141,7 @@
 @ stdcall ExDeleteResourceLite(ptr)
 @ stub ExDesktopObjectType
 @ stub ExDisableResourceBoostLite
-@ stub ExEnumHandleTable
+@ stdcall ExEnumHandleTable(ptr ptr ptr ptr)
 @ extern ExEventObjectType
 @ stub ExExtendZone
 @ stdcall -fastcall ExfUnblockPushLock(ptr ptr)
@@ -151,7 +151,7 @@
 @ stub ExGetCurrentProcessorCounts
 @ stub ExGetCurrentProcessorCpuUsage
 @ stdcall ExGetExclusiveWaiterCount(ptr)
-@ stub ExGetPreviousMode
+@ stdcall ExGetPreviousMode()
 @ stdcall ExGetSharedWaiterCount(ptr)
 @ stdcall ExInitializeNPagedLookasideList(ptr ptr ptr long long long long)
 @ stdcall ExInitializePagedLookasideList(ptr ptr ptr long long long long)
@@ -175,9 +175,9 @@
 @ stub ExNotifyCallback
 @ stub ExQueryPoolBlockSize
 @ stub ExQueueWorkItem
-@ stub ExRaiseAccessViolation
-@ stub ExRaiseDatatypeMisalignment
-@ stub ExRaiseException
+@ stdcall ExRaiseAccessViolation()
+@ stdcall ExRaiseDatatypeMisalignment()
+@ stdcall ExRaiseException(ptr)
 @ stub ExRaiseHardError
 @ stub ExRaiseStatus
 @ stub ExRegisterCallback
@@ -410,7 +410,7 @@
 @ stub IoGetRequestorProcessId
 @ stub IoGetRequestorSessionId
 @ stdcall IoGetStackLimits(ptr ptr)
-@ stub IoGetTopLevelIrp
+@ stdcall IoGetTopLevelIrp()
 @ stdcall IoInitializeIrp(ptr long long)
 @ stdcall IoInitializeRemoveLockEx(ptr long long long long)
 @ stdcall IoInitializeTimer(ptr ptr ptr)
@@ -427,7 +427,7 @@
 @ stub IoPageRead
 @ stub IoPnPDeliverServicePowerNotification
 @ stdcall IoQueryDeviceDescription(ptr ptr ptr ptr ptr ptr ptr ptr)
-@ stub IoQueryFileDosDeviceName
+@ stdcall IoQueryFileDosDeviceName(ptr ptr)
 @ stub IoQueryFileInformation
 @ stub IoQueryVolumeInformation
 @ stub IoQueueThreadIrp
@@ -480,7 +480,7 @@
 @ stdcall IoStopTimer(ptr)
 @ stub IoSynchronousInvalidateDeviceRelations
 @ stub IoSynchronousPageWrite
-@ stub IoThreadToProcess
+@ stdcall IoThreadToProcess(ptr)
 @ stdcall IoUnregisterFileSystem(ptr)
 @ stub IoUnregisterFsRegistrationChange
 @ stdcall IoUnregisterPlugPlayNotification(ptr)
@@ -495,7 +495,7 @@
 @ stub IoWMIExecuteMethod
 @ stub IoWMIHandleToInstanceName
 @ stdcall IoWMIOpenBlock(ptr long ptr)
-@ stub IoWMIQueryAllData
+@ stdcall IoWMIQueryAllData(ptr ptr ptr)
 @ stub IoWMIQueryAllDataMultiple
 @ stub IoWMIQuerySingleInstance
 @ stub IoWMIQuerySingleInstanceMultiple
@@ -510,7 +510,7 @@
 @ stub IoWritePartitionTableEx
 @ stub IoWriteTransferCount
 @ extern KdDebuggerEnabled
-@ stub KdDebuggerNotPresent
+@ extern KdDebuggerNotPresent
 @ stub KdDisableDebugger
 @ stub KdEnableDebugger
 @ stub KdEnteredDebugger
@@ -524,6 +524,7 @@
 @ stdcall KeAcquireSpinLockAtDpcLevel(ptr)
 @ stdcall -arch=!i386 KeAcquireSpinLockRaiseToDpc(ptr)
 @ stub KeAddSystemServiceTable
+@ stdcall KeAlertThread(ptr long)
 @ stdcall KeAreApcsDisabled()
 @ stub KeAttachProcess
 @ stdcall KeBugCheck(long)
@@ -558,7 +559,7 @@
 @ stub KeI386ReleaseLid
 @ stub KeI386SetGdtSelector
 @ stub KeIcacheFlushCount
-@ stub KeInitializeApc
+@ stdcall KeInitializeApc(ptr ptr long ptr ptr ptr long ptr)
 @ stub KeInitializeDeviceQueue
 @ stdcall KeInitializeDpc(ptr ptr ptr)
 @ stdcall KeInitializeEvent(ptr long long)
@@ -574,7 +575,7 @@
 @ stub KeInsertDeviceQueue
 @ stub KeInsertHeadQueue
 @ stdcall KeInsertQueue(ptr ptr)
-@ stub KeInsertQueueApc
+@ stdcall KeInsertQueueApc(ptr ptr ptr long)
 @ stub KeInsertQueueDpc
 @ stub KeIsAttachedProcess
 @ stub KeIsExecutingDpc
@@ -592,7 +593,7 @@
 @ stdcall KeQueryTickCount(ptr)
 @ stdcall KeQueryTimeIncrement()
 @ stub KeRaiseUserException
-@ stub KeReadStateEvent
+@ stdcall KeReadStateEvent(ptr)
 @ stub KeReadStateMutant
 @ stub KeReadStateMutex
 @ stub KeReadStateQueue
@@ -635,11 +636,12 @@
 @ stub KeSetTimeIncrement
 @ stub KeSetTimer
 @ stdcall KeSetTimerEx(ptr int64 long ptr)
-@ stub KeStackAttachProcess
+@ stdcall KeStackAttachProcess(ptr ptr)
 @ stub KeSynchronizeExecution
 @ stub KeTerminateThread
+@ stdcall KeTestAlertThread(long)
 @ extern KeTickCount
-@ stub KeUnstackDetachProcess
+@ stdcall KeUnstackDetachProcess(ptr)
 @ stub KeUpdateRunTime
 @ stub KeUpdateSystemTime
 @ stub KeUserModeCallback
@@ -690,12 +692,12 @@
 @ stub MmFreeMappingAddress
 @ stdcall MmFreeNonCachedMemory(ptr long)
 @ stub MmFreePagesFromMdl
-@ stub MmGetPhysicalAddress
+@ stdcall MmGetPhysicalAddress(ptr)
 @ stub MmGetPhysicalMemoryRanges
 @ stdcall MmGetSystemRoutineAddress(ptr)
 @ stub MmGetVirtualForPhysical
 @ stub MmGrowKernelStack
-@ stub MmHighestUserAddress
+@ extern MmHighestUserAddress
 @ stdcall MmIsAddressValid(ptr)
 @ stub MmIsDriverVerifying
 @ stub MmIsNonPagedSystemAddressValid
@@ -731,7 +733,7 @@
 @ stub MmSetAddressRangeModified
 @ stub MmSetBankedSection
 @ stub MmSizeOfMdl
-@ stub MmSystemRangeStart
+@ extern MmSystemRangeStart
 @ stub MmTrimAllSystemPagableMemory
 @ stdcall MmUnlockPagableImageSection(ptr)
 @ stdcall MmUnlockPages(ptr)
@@ -743,7 +745,7 @@
 @ stub MmUnmapViewInSystemSpace
 @ stub MmUnmapViewOfSection
 @ stub MmUnsecureVirtualMemory
-@ stub MmUserProbeAddress
+@ extern MmUserProbeAddress
 @ extern NlsAnsiCodePage ntdll.NlsAnsiCodePage
 @ stub NlsLeadByteInfo
 @ extern NlsMbCodePageTag ntdll.NlsMbCodePageTag
@@ -791,6 +793,7 @@
 @ stub NtQueryQuotaInformationFile
 @ stdcall NtQuerySecurityObject(long long ptr long ptr)
 @ stdcall NtQuerySystemInformation(long ptr long ptr)
+@ stdcall NtQueryVirtualMemory(long ptr long ptr long ptr)
 @ stdcall NtQueryVolumeInformationFile(long ptr ptr long long)
 @ stdcall NtReadFile(long long ptr ptr ptr ptr long ptr ptr)
 @ stub NtRequestPort
@@ -812,7 +815,7 @@
 @ stub ObAssignSecurity
 @ stub ObCheckCreateObjectAccess
 @ stub ObCheckObjectAccess
-@ stub ObCloseHandle
+@ stdcall ObCloseHandle(ptr long)
 @ stub ObCreateObject
 @ stub ObCreateObjectType
 @ stdcall ObDereferenceObject(ptr)
@@ -867,7 +870,7 @@
 @ stub PsCreateSystemProcess
 @ stdcall PsCreateSystemThread(ptr long ptr long ptr ptr ptr)
 @ stub PsDereferenceImpersonationToken
-@ stub PsDereferencePrimaryToken
+@ stdcall PsDereferencePrimaryToken(ptr)
 @ stub PsDisableImpersonation
 @ stub PsEstablishWin32Callouts
 @ stub PsGetContextThread
@@ -882,18 +885,18 @@
 @ stub PsGetJobLock
 @ stub PsGetJobSessionId
 @ stub PsGetJobUIRestrictionsClass
-@ stub PsGetProcessCreateTimeQuadPart
-@ stub PsGetProcessDebugPort
-@ stub PsGetProcessExitProcessCalled
+@ stdcall PsGetProcessCreateTimeQuadPart(ptr)
+@ stdcall PsGetProcessDebugPort(ptr)
+@ stdcall PsGetProcessExitProcessCalled(ptr)
 @ stub PsGetProcessExitStatus
 @ stub PsGetProcessExitTime
 @ stdcall PsGetProcessId(ptr)
-@ stub PsGetProcessImageFileName
+@ stdcall PsGetProcessImageFileName(ptr)
 @ stdcall PsGetProcessInheritedFromUniqueProcessId(ptr)
 @ stub PsGetProcessJob
-@ stub PsGetProcessPeb
+@ stdcall PsGetProcessPeb(ptr)
 @ stub PsGetProcessPriorityClass
-@ stub PsGetProcessSectionBaseAddress
+@ stdcall PsGetProcessSectionBaseAddress(ptr)
 @ stub PsGetProcessSecurityPort
 @ stub PsGetProcessSessionId
 @ stub PsGetProcessWin32Process
@@ -913,14 +916,14 @@
 @ stub PsIsProcessBeingDebugged
 @ stdcall PsIsSystemThread(ptr)
 @ stub PsIsThreadImpersonating
-@ stub PsIsThreadTerminating
+@ stdcall PsIsThreadTerminating(ptr)
 @ stub PsJobType
 @ stdcall PsLookupProcessByProcessId(ptr ptr)
 @ stub PsLookupProcessThreadByCid
 @ stdcall PsLookupThreadByThreadId(ptr ptr)
 @ extern PsProcessType
 @ stub PsReferenceImpersonationToken
-@ stub PsReferencePrimaryToken
+@ stdcall PsReferencePrimaryToken(ptr)
 @ stdcall PsReferenceProcessFilePointer(ptr ptr)
 @ stdcall PsReleaseProcessExitSynchronization(ptr)
 @ stdcall PsRemoveCreateThreadNotifyRoutine(ptr)
@@ -949,6 +952,7 @@
 @ stdcall PsSuspendProcess(ptr)
 @ stdcall PsTerminateSystemThread(long)
 @ extern PsThreadType
+@ stdcall PsWrapApcWow64Thread(ptr ptr)
 @ stdcall READ_REGISTER_BUFFER_UCHAR(ptr ptr long)
 @ stub READ_REGISTER_BUFFER_ULONG
 @ stub READ_REGISTER_BUFFER_USHORT
@@ -1268,7 +1272,7 @@
 @ stub SePrivilegeObjectAuditAlarm
 @ stub SePublicDefaultDacl
 @ stub SeQueryAuthenticationIdToken
-@ stub SeQueryInformationToken
+@ stdcall SeQueryInformationToken(ptr long ptr)
 @ stub SeQuerySecurityDescriptorInfo
 @ stub SeQuerySessionIdToken
 @ stub SeRegisterLogonSessionTerminatedRoutine
@@ -1288,6 +1292,8 @@
 @ stub SeUnlockSubjectContext
 @ stub SeUnregisterLogonSessionTerminatedRoutine
 @ stub SeValidSecurityDescriptor
+@ stdcall SeRegisterImageVerificationCallback(long long ptr ptr long ptr)
+@ stdcall SeUnregisterImageVerificationCallback(ptr)
 @ stdcall -ret64 VerSetConditionMask(int64 long long)
 @ stub VfFailDeviceNode
 @ stub VfFailDriver
@@ -1366,6 +1372,7 @@
 @ stdcall -private ZwOpenThreadTokenEx(long long long long ptr) NtOpenThreadTokenEx
 @ stdcall -private ZwOpenTimer(ptr long ptr) NtOpenTimer
 @ stdcall -private ZwPowerInformation(long ptr long ptr long) NtPowerInformation
+@ stdcall -private ZwProtectVirtualMemory(long ptr ptr long ptr)
 @ stdcall -private ZwPulseEvent(long ptr) NtPulseEvent
 @ stub ZwQueryBootEntryOrder
 @ stub ZwQueryBootOptions
@@ -1388,6 +1395,7 @@
 @ stdcall -private ZwQuerySymbolicLinkObject(long ptr ptr) NtQuerySymbolicLinkObject
 @ stdcall -private ZwQuerySystemInformation(long ptr long ptr) NtQuerySystemInformation
 @ stdcall -private ZwQueryValueKey(long ptr long ptr long ptr) NtQueryValueKey
+@ stdcall -private ZwQueryVirtualMemory(long ptr long ptr long ptr) NtQueryVirtualMemory
 @ stdcall -private ZwQueryVolumeInformationFile(long ptr ptr long long) NtQueryVolumeInformationFile
 @ stdcall -private ZwReadFile(long long ptr ptr ptr ptr long ptr ptr) NtReadFile
 @ stdcall -private ZwReplaceKey(ptr long ptr) NtReplaceKey

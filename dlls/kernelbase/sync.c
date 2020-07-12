@@ -228,13 +228,16 @@ BOOL WINAPI DECLSPEC_HOTPATCH UnregisterWaitEx( HANDLE handle, HANDLE event )
     return set_ntstatus( RtlDeregisterWaitEx( handle, event ));
 }
 
-
 /***********************************************************************
  *           WaitForSingleObject   (kernelbase.@)
  */
 DWORD WINAPI DECLSPEC_HOTPATCH WaitForSingleObject( HANDLE handle, DWORD timeout )
 {
-    return WaitForMultipleObjectsEx( 1, &handle, FALSE, timeout, FALSE );
+    DWORD ret;
+    TRACE("waiting on %x w/ timeout %u\n", handle, timeout);
+    ret = WaitForMultipleObjectsEx( 1, &handle, FALSE, timeout, FALSE );
+    TRACE("returning %x\n", ret);
+    return ret;
 }
 
 
@@ -370,6 +373,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateEventExW( SECURITY_ATTRIBUTES *sa, LPCWSTR
         SetLastError( ERROR_ALREADY_EXISTS );
     else
         SetLastError( RtlNtStatusToDosError(status) );
+    TRACE("event handle %x\n", ret);
     return ret;
 }
 
@@ -423,6 +427,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH PulseEvent( HANDLE handle )
  */
 BOOL WINAPI DECLSPEC_HOTPATCH SetEvent( HANDLE handle )
 {
+    TRACE("%x\n", handle);
     return set_ntstatus( NtSetEvent( handle, NULL ));
 }
 
@@ -432,6 +437,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetEvent( HANDLE handle )
  */
 BOOL WINAPI DECLSPEC_HOTPATCH ResetEvent( HANDLE handle )
 {
+    TRACE("%x\n", handle);
     return set_ntstatus( NtResetEvent( handle, NULL ));
 }
 

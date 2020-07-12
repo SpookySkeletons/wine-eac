@@ -311,7 +311,7 @@ static NTSTATUS FILE_CreateFile( PHANDLE handle, ACCESS_MASK access, POBJECT_ATT
     ANSI_STRING unix_name;
     BOOL created = FALSE;
 
-    TRACE("handle=%p access=%08x name=%s objattr=%08x root=%p sec=%p io=%p alloc_size=%p "
+    ERR("handle=%p access=%08x name=%s objattr=%08x root=%p sec=%p io=%p alloc_size=%p "
           "attr=%08x sharing=%08x disp=%d options=%08x ea=%p.0x%08x\n",
           handle, access, debugstr_us(attr->ObjectName), attr->Attributes,
           attr->RootDirectory, attr->SecurityDescriptor, io, alloc_size,
@@ -325,6 +325,12 @@ static NTSTATUS FILE_CreateFile( PHANDLE handle, ACCESS_MASK access, POBJECT_ATT
         io->u.Status = file_id_to_unix_file_name( attr, &unix_name );
     else
         io->u.Status = nt_to_unix_file_name_attr( attr, &unix_name, disposition );
+
+    //char *bruh;
+    //if ((bruh = strstr(unix_name.Buffer, "ntoskrnl")) && NtCurrentTeb()->SystemReserved1[15])
+    //{
+    //    bruh[0] = 'm';
+    //}
 
     if (io->u.Status == STATUS_BAD_DEVICE_TYPE)
     {
@@ -1671,6 +1677,8 @@ static NTSTATUS server_ioctl_file( HANDLE handle, HANDLE event,
     {
         req->code  = code;
         req->async = server_async( handle, &async->io, event, apc, apc_context, io );
+        req->input_buffer = wine_server_client_ptr(in_buffer);
+        req->output_buffer = wine_server_client_ptr(out_buffer);
         wine_server_add_data( req, in_buffer, in_size );
         if ((code & 3) != METHOD_BUFFERED)
             wine_server_add_data( req, out_buffer, out_size );
@@ -1693,6 +1701,7 @@ static NTSTATUS server_ioctl_file( HANDLE handle, HANDLE event,
     if (status != STATUS_PENDING) RtlFreeHeap( GetProcessHeap(), 0, async );
 
     if (wait_handle) status = wait_async( wait_handle, (options & FILE_SYNCHRONOUS_IO_ALERT), io );
+    ERR("status = %x\n", status);
     return status;
 }
 
@@ -1752,7 +1761,7 @@ NTSTATUS WINAPI NtDeviceIoControlFile(HANDLE handle, HANDLE event,
     ULONG device = (code >> 16);
     NTSTATUS status = STATUS_NOT_SUPPORTED;
 
-    TRACE("(%p,%p,%p,%p,%p,0x%08x,%p,0x%08x,%p,0x%08x)\n",
+    ERR("(%p,%p,%p,%p,%p,0x%08x,%p,0x%08x,%p,0x%08x)\n",
           handle, event, apc, apc_context, io, code,
           in_buffer, in_size, out_buffer, out_size);
 
@@ -2959,7 +2968,7 @@ NTSTATUS WINAPI NtQueryInformationFile( HANDLE hFile, PIO_STATUS_BLOCK io,
     ULONG attr;
     unsigned int options;
 
-    TRACE("(%p,%p,%p,0x%08x,0x%08x)\n", hFile, io, ptr, len, class);
+    ERR("(%p,%p,%p,0x%08x,0x%08x)\n", hFile, io, ptr, len, class);
 
     io->Information = 0;
 

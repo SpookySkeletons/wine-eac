@@ -75,6 +75,7 @@ struct process
     unsigned int         is_system:1;     /* is it a system process? */
     unsigned int         debug_children:1;/* also debug all child processes */
     unsigned int         is_terminating:1;/* is process terminating? */
+    unsigned int         is_kernel:1;     /* winedevice process */
     struct job          *job;             /* job object ascoicated with this process */
     struct list          job_entry;       /* list entry for job object */
     struct list          asyncs;          /* list of async object owned by the process */
@@ -98,6 +99,8 @@ struct process
     const struct rawinput_device *rawinput_mouse; /* rawinput mouse device, if any */
     const struct rawinput_device *rawinput_kbd;   /* rawinput keyboard device, if any */
     struct list          kernel_object;   /* list of kernel object pointers */
+    struct device_manager *dev_mgr;
+    struct object         *callback_init_event;
     int                  esync_fd;        /* esync file descriptor (signaled on exit) */
 };
 
@@ -141,6 +144,7 @@ extern void detach_debugged_processes( struct thread *debugger );
 extern struct process_snapshot *process_snap( int *count );
 extern void enum_processes( int (*cb)(struct process*, void*), void *user);
 extern void replace_process_token( struct process *process, struct token *token );
+extern int is_process( struct object *obj );
 
 /* console functions */
 extern void inherit_console( struct thread *parent_thread, struct process *parent,

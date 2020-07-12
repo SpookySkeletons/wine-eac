@@ -293,7 +293,7 @@ TEB *thread_init(void)
     size = 0x10000;
     status = NtAllocateVirtualMemory( NtCurrentProcess(), &addr, 0, &size,
                                       MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE );
-    if (status)
+    if (status || addr != (void *)0x7ffe0000)
     {
         MESSAGE( "wine: failed to map the shared user data: %08x\n", status );
         exit(1);
@@ -719,6 +719,8 @@ NTSTATUS WINAPI NtCreateThreadEx( HANDLE *handle_ptr, ACCESS_MASK access, OBJECT
         return status;
     }
 
+    TRACE("tid = %x\n", tid);
+
     pthread_sigmask( SIG_BLOCK, &server_block_set, &sigset );
 
     if ((status = signal_alloc_thread( &teb ))) goto error;
@@ -1017,6 +1019,8 @@ NTSTATUS WINAPI NtTerminateThread( HANDLE handle, LONG exit_code )
     NTSTATUS ret;
     BOOL self;
 
+    TRACE("%x %x\n", handle, exit_code);
+
     SERVER_START_REQ( terminate_thread )
     {
         req->handle    = wine_server_obj_handle( handle );
@@ -1186,6 +1190,8 @@ NTSTATUS WINAPI NtQueryInformationThread( HANDLE handle, THREADINFOCLASS class,
                                           void *data, ULONG length, ULONG *ret_len )
 {
     NTSTATUS status;
+
+    ERR("%x %u %p %u %p\n", handle, class, data, length, ret_len);
 
     switch(class)
     {

@@ -713,6 +713,8 @@ void init_locale(void)
 
     kernel32_handle = GetModuleHandleW( L"kernel32.dll" );
 
+    ERR("kernel32 handle = %p\n", kernel32_handle);
+
     GetLocaleInfoW( LOCALE_SYSTEM_DEFAULT, LOCALE_IDEFAULTANSICODEPAGE | LOCALE_RETURN_NUMBER,
                     (WCHAR *)&ansi_cp, sizeof(ansi_cp)/sizeof(WCHAR) );
     GetLocaleInfoW( LOCALE_SYSTEM_DEFAULT, LOCALE_IDEFAULTMACCODEPAGE | LOCALE_RETURN_NUMBER,
