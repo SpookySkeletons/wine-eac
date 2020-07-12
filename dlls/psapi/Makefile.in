@@ -2,3 +2,5 @@ MODULE    = psapi.dll
 IMPORTLIB = psapi
 
 RC_SRCS = version.rc
+
+C_SRCS = psapi_main2.c

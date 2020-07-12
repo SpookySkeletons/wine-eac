@@ -151,9 +151,9 @@ struct object_header
 static void free_kernel_object( void *obj )
 {
     struct object_header *header = (struct object_header *)obj - 1;
-    forget_kernel_struct(header);
-    HeapFree( GetProcessHeap(), 0, TO_USER(header) );
-    //HeapFree( GetProcessHeap(), 0, header );
+    //forget_kernel_struct(header);
+    //HeapFree( GetProcessHeap(), 0, TO_USER(header) );
+    HeapFree( GetProcessHeap(), 0, header );
 }
 
 static void kernel_object_accessed(void *obj, DWORD offset, BOOL write, void *ip)
@@ -180,10 +180,10 @@ void *alloc_kernel_object( POBJECT_TYPE type, HANDLE handle, SIZE_T size, LONG r
     if (!(header = HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*header) + size)) )
         return NULL;
 
-    if (!(header = register_kernel_struct(header, sizeof(*header) + size, kernel_object_accessed)))
+    /*if (!(header = register_kernel_struct(header, sizeof(*header) + size, kernel_object_accessed)))
     {
         return NULL;
-    }
+    }*/
 
     if (handle)
     {
@@ -2502,6 +2502,7 @@ static void *create_process_object( HANDLE handle )
     PEPROCESS process;
     CHAR image_path[MAX_PATH];
     DWORD path_size = MAX_PATH;
+    DWORD filename_len = 0;
     KERNEL_USER_TIMES times;
     HANDLE process_file = NULL;
     HANDLE init_event = NULL;
@@ -2539,8 +2540,11 @@ static void *create_process_object( HANDLE handle )
     {
         req->handle = wine_server_obj_handle(handle);
         req->base_address = 0;
-        if ((stat = wine_server_call(req)) == STATUS_BUFFER_TOO_SMALL)
+        if (((stat = wine_server_call(req)) == STATUS_BUFFER_TOO_SMALL) || stat == STATUS_SUCCESS)
+        {
             process->section_base_address = (PVOID) reply->base_address;
+            filename_len = reply->filename_len;
+        }
         else
         {
             ERR("Failed to get base address stat %x\n", stat);
@@ -2549,22 +2553,50 @@ static void *create_process_object( HANDLE handle )
     }
     SERVER_END_REQ;
 
-    SERVER_START_REQ(get_mapping_file)
+    if (process->section_base_address)
     {
-        req->addr = wine_server_client_ptr(process->section_base_address);
-        req->process = wine_server_obj_handle(handle);
-        if (!(stat = wine_server_call(req)))
-            process_file = wine_server_ptr_handle(reply->handle);
-        else
-            ERR("Failed to get file from mapping, address = %p\n, stat = %x\n", process->section_base_address, stat);
-    }
-    SERVER_END_REQ;
+        SERVER_START_REQ(get_mapping_file)
+        {
+            req->addr = wine_server_client_ptr(process->section_base_address);
+            req->process = wine_server_obj_handle(handle);
+            if (!(stat = wine_server_call(req)))
+                process_file = wine_server_ptr_handle(reply->handle);
+        }
+        SERVER_END_REQ;
 
-    if (process_file)
-    {
-        stat = ObReferenceObjectByHandle(process_file, FILE_GENERIC_READ, IoFileObjectType, KernelMode, (void**) &process->file_object, NULL);
-        TRACE("bruh %x\n", stat);
-        CloseHandle(process_file);
+        if (stat)
+        {
+            PWCHAR filename = HeapAlloc(GetProcessHeap(), 0, filename_len + sizeof(WCHAR));
+            filename[filename_len / sizeof(WCHAR)] = 0;
+
+            WARN("Failed to get file from mapping, address = %p.  Falling back to new handle.\n, stat = %x\n", process->section_base_address, stat);
+
+            SERVER_START_REQ(get_dll_info)
+            {
+                req->handle = wine_server_obj_handle(handle);
+                req->base_address = 0;
+                wine_server_set_reply(req, filename, filename_len);
+                stat = wine_server_call(req);
+            }
+            SERVER_END_REQ;
+
+            if (!stat)
+            {
+                process_file = CreateFileW(filename, 0, FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+                if (!process_file)
+                    ERR("Fallback failed to create handle to exe file. %x\n", GetLastError());
+            }
+            else
+                ERR("Fallback failed to get process exe file name %x\n", stat);
+            HeapFree(GetProcessHeap(), 0, filename);
+        }
+
+        if (process_file)
+        {
+            stat = ObReferenceObjectByHandle(process_file, FILE_GENERIC_READ, IoFileObjectType, KernelMode, (void**) &process->file_object, NULL);
+            TRACE("bruh %x\n", stat);
+            CloseHandle(process_file);
+        }
     }
 
     memset(process->image_file_name, 0, 16);

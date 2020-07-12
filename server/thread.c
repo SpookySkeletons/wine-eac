@@ -1841,8 +1841,6 @@ DECL_HANDLER(select)
         }
         release_object( apc );
     }
-
-    fprintf(stderr, "%04x: %x\n", current->id, get_error());
 }
 
 /* queue an APC for a thread or process */

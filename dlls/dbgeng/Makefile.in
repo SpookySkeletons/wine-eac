@@ -1,6 +1,7 @@
 MODULE    = dbgeng.dll
 IMPORTLIB = dbgeng
 DELAYIMPORTS = version
+IMPORTS = psapi
 
 EXTRADLLFLAGS = -mno-cygwin
 

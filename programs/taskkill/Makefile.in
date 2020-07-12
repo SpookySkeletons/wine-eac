@@ -1,5 +1,5 @@
 MODULE    = taskkill.exe
-IMPORTS   = user32
+IMPORTS   = user32 psapi
 
 EXTRADLLFLAGS = -mconsole -municode -mno-cygwin
 

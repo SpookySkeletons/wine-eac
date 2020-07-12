@@ -89,6 +89,7 @@ static DWORD device_handler( DWORD ctrl, const WCHAR *driver_name )
     }
 
     RtlFreeUnicodeString( &service_name );
+    TRACE("device handler returning\n");
     return result;
 }
 
